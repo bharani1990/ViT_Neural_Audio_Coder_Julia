@@ -20,17 +20,17 @@ to_device(x) = USE_GPU ? gpu(x) : x
 
 function test_model_creation()
     model = Model.create_model(
-        in_chans=1,
-        out_chans=1,
-        embed_dim=256,
-        enc_depth=6,
-        dec_depth=4,
-        heads=8,
-        mlp_dim=1024,
-        patch_size=16,
-        max_len=80*1024,
-        dropout_rate=0.1,
-        n_codes=1024
+        in_chans = 1,
+        out_chans = 1,
+        embed_dim = 256,
+        enc_depth = 6,
+        dec_depth = 4,
+        heads = 8,
+        mlp_dim = 1024,
+        patch_size = 16,
+        max_len = 80*1024,
+        dropout_rate = 0.1,
+        n_codes = 1024,
     )
     println("[Success] --> Model created")
     return model
@@ -50,7 +50,9 @@ function test_quantizer(model)
     x = randn(Float32, 80*1024, 1, 1)
     x = to_device(x)
     _, indices = Model.encode_quantize(model, x)
-    println("[Success] --> Quantizer: $(length(indices)) indices, range [$(minimum(indices)), $(maximum(indices))]")
+    println(
+        "[Success] --> Quantizer: $(length(indices)) indices, range [$(minimum(indices)), $(maximum(indices))]",
+    )
     return cpu(model)
 end
 
@@ -58,19 +60,19 @@ function test_gradient_computation(model)
     model = to_device(model)
     x = randn(Float32, 80*1024, 1, 2)
     x = to_device(x)
-    
+
     loss, grads = Flux.withgradient(model) do m
         y = m(x)
         Flux.mse(y, x)
     end
-    
+
     println("[Success] --> Gradients computed, loss = $loss")
     return cpu(model)
 end
 
 function test_dataloader()
     root = @__DIR__
-    loader = DataLoader.MelDataLoader(root, "test-clean"; batch_size=2)
+    loader = DataLoader.MelDataLoader(root, "test-clean"; batch_size = 2)
     batch, _ = iterate(loader)
     println("[Success] --> DataLoader: batch shape = $(size(batch))")
 end

@@ -10,10 +10,10 @@ function load_checkpoint(checkpoint_path::String)
     if !isfile(checkpoint_path)
         error("Checkpoint file not found: $checkpoint_path")
     end
-    
+
     println("Loading checkpoint from: $checkpoint_path")
     checkpoint = BSON.load(checkpoint_path)
-    
+
     if haskey(checkpoint, :model_cpu)
         model = checkpoint[:model_cpu]
         println("Loaded model from checkpoint")
@@ -23,24 +23,30 @@ function load_checkpoint(checkpoint_path::String)
     else
         error("No model found in checkpoint file. Available keys: $(keys(checkpoint))")
     end
-    
-    metadata = Dict{Symbol, Any}()
+
+    metadata = Dict{Symbol,Any}()
     if haskey(checkpoint, :epoch)
         metadata[:epoch] = checkpoint[:epoch]
         println("Previous epoch: $(checkpoint[:epoch])")
     end
-    
+
     if haskey(checkpoint, :loss)
         metadata[:loss] = checkpoint[:loss]
         println("Previous loss: $(checkpoint[:loss])")
     end
-    
+
     return model, metadata
 end
 
-function save_checkpoint(filepath::String, model; epoch=nothing, loss=nothing, opt_state=nothing)
+function save_checkpoint(
+    filepath::String,
+    model;
+    epoch = nothing,
+    loss = nothing,
+    opt_state = nothing,
+)
     model_cpu = cpu(model)
-    
+
     if !isnothing(epoch) && !isnothing(loss)
         BSON.@save filepath model_cpu epoch loss
     elseif !isnothing(epoch)
@@ -50,7 +56,7 @@ function save_checkpoint(filepath::String, model; epoch=nothing, loss=nothing, o
     else
         BSON.@save filepath model_cpu
     end
-    
+
     println("Saved checkpoint to $filepath")
 end
 

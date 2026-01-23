@@ -8,8 +8,8 @@ struct AudioDataset
     files::Vector{String}
 end
 
-function AudioDataset(root::AbstractString; split::String="train-clean")
-    files = Data.list_librispeech_flac(root; split=split)
+function AudioDataset(root::AbstractString; split::String = "train-clean")
+    files = Data.list_librispeech_flac(root; split = split)
     return AudioDataset(files)
 end
 
@@ -23,7 +23,7 @@ function get_example(ds::AudioDataset, i::Int)
     return patches
 end
 
-function shuffled_indices(ds::AudioDataset; rng=Random.GLOBAL_RNG)
+function shuffled_indices(ds::AudioDataset; rng = Random.GLOBAL_RNG)
     return Random.shuffle(rng, collect(1:length(ds)))
 end
 

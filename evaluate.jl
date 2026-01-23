@@ -46,16 +46,16 @@ end
 
 function build_model()
     return Model.create_model(
-        in_chans=1,
-        out_chans=1,
-        embed_dim=256,
-        enc_depth=6,
-        dec_depth=4,
-        heads=8,
-        mlp_dim=1024,
-        patch_size=16,
-        max_len=16384,
-        dropout_rate=0.1
+        in_chans = 1,
+        out_chans = 1,
+        embed_dim = 256,
+        enc_depth = 6,
+        dec_depth = 4,
+        heads = 8,
+        mlp_dim = 1024,
+        patch_size = 16,
+        max_len = 16384,
+        dropout_rate = 0.1,
     )
 end
 
@@ -82,28 +82,30 @@ function load_or_instantiate_model(model_path::AbstractString)
     if !isfile(model_path)
         error("Model file not found: $model_path")
     end
-    
+
     checkpoint_model = resolve_model_checkpoint(model_path)
     if checkpoint_model !== nothing
         @printf("Loaded model from %s\n", model_path)
         return cpu(checkpoint_model)
     end
-    
+
     error("Failed to load model from $model_path - no valid model found in checkpoint")
 end
 
-function run_evaluation(; model_path::AbstractString=DEFAULT_MODEL_PATH,
-                        split::AbstractString=DEFAULT_SPLIT,
-                        num_samples::Int=DEFAULT_NUM_SAMPLES,
-                        report_path::AbstractString=DEFAULT_REPORT_PATH,
-                        rng_seed::Integer=RNG_SEED)
+function run_evaluation(;
+    model_path::AbstractString = DEFAULT_MODEL_PATH,
+    split::AbstractString = DEFAULT_SPLIT,
+    num_samples::Int = DEFAULT_NUM_SAMPLES,
+    report_path::AbstractString = DEFAULT_REPORT_PATH,
+    rng_seed::Integer = RNG_SEED,
+)
     root = @__DIR__
     rng = MersenneTwister(rng_seed)
 
     model = load_or_instantiate_model(model_path)
     model = cpu(model)
 
-    files = Data.list_librispeech_flac(root; split=split)
+    files = Data.list_librispeech_flac(root; split = split)
     selected_files = select_audio_files(files, num_samples, rng)
 
     metric_results = Vector{Metric_Calc.MetricResult}()

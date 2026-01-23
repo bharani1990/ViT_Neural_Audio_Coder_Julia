@@ -26,20 +26,19 @@ end
 
 @functor PatchDecoder
 
-PatchDecoder(embed_dim::Int, patch_dim::Int) =
-    PatchDecoder(Dense(embed_dim, patch_dim))
+PatchDecoder(embed_dim::Int, patch_dim::Int) = PatchDecoder(Dense(embed_dim, patch_dim))
 
 function (d::PatchDecoder)(y)
     E, T, B = size(y)
     y2 = reshape(y, E, T * B)
     out = d.linear(y2)
-    out = reshape(out, size(out,1), T, B)
+    out = reshape(out, size(out, 1), T, B)
 end
 
 function batch_loss(model, batch)
     T, P, B = size(batch)
     recon = model(batch)
-    sum((recon .- batch).^2) / (T * P * B)
+    sum((recon .- batch) .^ 2) / (T * P * B)
 end
 
 function compute_validation_loss(model, loader)
@@ -58,17 +57,19 @@ function compute_validation_loss(model, loader)
     total_loss / max(nbatches, 1)
 end
 
-function train!(; epochs::Int=1,
-                batch_size::Int=4,
-                lr::Float32=1f-4,
-                root::AbstractString=pwd(),
-                save_dir::AbstractString="")
+function train!(;
+    epochs::Int = 1,
+    batch_size::Int = 4,
+    lr::Float32 = 1.0f-4,
+    root::AbstractString = pwd(),
+    save_dir::AbstractString = "",
+)
 
-    ds_train = Dataset.AudioDataset(root; split="train-clean")
-    loader_train = DataLoader.AudioDataLoader(ds_train; batch_size=batch_size)
+    ds_train = Dataset.AudioDataset(root; split = "train-clean")
+    loader_train = DataLoader.AudioDataLoader(ds_train; batch_size = batch_size)
 
-    ds_val = Dataset.AudioDataset(root; split="dev-clean")
-    loader_val = DataLoader.AudioDataLoader(ds_val; batch_size=batch_size)
+    ds_val = Dataset.AudioDataset(root; split = "dev-clean")
+    loader_val = DataLoader.AudioDataLoader(ds_val; batch_size = batch_size)
 
     first_batch, _ = iterate(loader_train)
     T, P, _ = size(first_batch)
@@ -79,7 +80,7 @@ function train!(; epochs::Int=1,
         Model.NUM_LAYERS,
         Model.NUM_HEADS,
         Model.MLP_DIM,
-        T
+        T,
     )
     decoder = PatchDecoder(Model.EMBED_DIM, P)
 
@@ -99,10 +100,12 @@ function train!(; epochs::Int=1,
     losses_dict = Dict()
 
     println("Training on $(device_name())")
-    println("Num-Epochs = $(epochs), Num-Batch-Size = $(batch_size), Num-Batches-per-epoch = $(total_batches)")
+    println(
+        "Num-Epochs = $(epochs), Num-Batch-Size = $(batch_size), Num-Batches-per-epoch = $(total_batches)",
+    )
 
-    for epoch in 1:epochs
-        loader = DataLoader.AudioDataLoader(ds_train; batch_size=batch_size)
+    for epoch = 1:epochs
+        loader = DataLoader.AudioDataLoader(ds_train; batch_size = batch_size)
         total_loss = 0.0f0
         nbatches = 0
         state = 1
@@ -129,13 +132,21 @@ function train!(; epochs::Int=1,
         val_loss = compute_validation_loss(model, loader_val)
         losses_dict[epoch] = Dict("train" => avg_loss, "val" => val_loss)
 
-        println("epoch = $epoch, batches = $nbatches, avg loss = $(avg_loss), val loss = $(val_loss)")
+        println(
+            "epoch = $epoch, batches = $nbatches, avg loss = $(avg_loss), val loss = $(val_loss)",
+        )
 
         if save_dir != "" && avg_loss < best_loss
             best_loss = avg_loss
             model_path = joinpath(save_dir, "best_model.jld2")
             println("Saving best model to $model_path")
-            jldsave(model_path; encoder=encoder, decoder=decoder, epoch=epoch, loss=best_loss)
+            jldsave(
+                model_path;
+                encoder = encoder,
+                decoder = decoder,
+                epoch = epoch,
+                loss = best_loss,
+            )
         end
     end
 

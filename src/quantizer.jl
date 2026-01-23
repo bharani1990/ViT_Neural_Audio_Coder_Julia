@@ -20,26 +20,26 @@ Functors.@functor VectorQuantizer
 
 function (vq::VectorQuantizer)(z)
     B, T, D = size(z)
-    
+
     zf = reshape(permutedims(z, (3, 2, 1)), D, B * T)
-    
-    z_squared = sum(zf .* zf, dims=1)
-    cb_squared = sum(vq.codebook .* vq.codebook, dims=1)
-    
-    distances = z_squared' .+ cb_squared .- 2f0 .* (zf' * vq.codebook)
-    
-    _, min_idx_2d = findmin(distances, dims=2)
-    
+
+    z_squared = sum(zf .* zf, dims = 1)
+    cb_squared = sum(vq.codebook .* vq.codebook, dims = 1)
+
+    distances = z_squared' .+ cb_squared .- 2.0f0 .* (zf' * vq.codebook)
+
+    _, min_idx_2d = findmin(distances, dims = 2)
+
     indices_range = reshape(1:vq.n_codes, 1, vq.n_codes)
     one_hot = Float32.(reshape(min_idx_2d, :, 1) .== indices_range)
-    
+
     quantized_flat = vq.codebook * one_hot'
     quantized_reshaped = permutedims(reshape(quantized_flat, D, T, B), (3, 2, 1))
-    
+
     straight_through = z .+ (quantized_reshaped .- z)
-    
-    indices_for_bitrate = dropdims(sum(one_hot .* indices_range, dims=2), dims=2)
-    
+
+    indices_for_bitrate = dropdims(sum(one_hot .* indices_range, dims = 2), dims = 2)
+
     return straight_through, indices_for_bitrate
 end
 
