@@ -128,6 +128,7 @@ ViT_Neural_Audio_Coder_Julia/
 ├── evaluation_report.json       # Evaluation metrics (after evaluation)
 ├── input_audio.wav              # Indicative Name, yeah!
 ├── reconstructed_audio.wav      # Again, Indicative Name, yeah!
+├── losses.json                  # Saving it to plot the loss plot!
 ├── README.md                    # Its me, Recursively calling me
 ```
 
