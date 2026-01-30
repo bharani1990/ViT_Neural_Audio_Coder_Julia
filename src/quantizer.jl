@@ -8,15 +8,16 @@ struct VectorQuantizer
     codebook::AbstractArray{Float32}
     n_codes::Int
     dim::Int
+    target_bitrate_kbps::Float32
 end
 
-function VectorQuantizer(n_codes::Int, dim::Int)
+function VectorQuantizer(n_codes::Int, dim::Int; target_bitrate_kbps::Float32=12.0f0)
     cb = randn(Float32, dim, n_codes) .* 0.02f0
-    VectorQuantizer(cb, n_codes, dim)
+    VectorQuantizer(cb, n_codes, dim, target_bitrate_kbps)
 end
 
 Flux.@layer VectorQuantizer
-Functors.@functor VectorQuantizer
+Functors.@functor VectorQuantizer (codebook,)
 
 function (vq::VectorQuantizer)(z)
     B, T, D = size(z)
@@ -43,15 +44,31 @@ function (vq::VectorQuantizer)(z)
     return straight_through, indices_for_bitrate
 end
 
-function compute_bitrate(indices::Vector{Int}, audio_duration_sec::Float32)
-    n_codes_transmitted = length(indices)
-    bits_per_code = ceil(Int, log2(maximum(indices)))
-    total_bits = n_codes_transmitted * bits_per_code
+function compute_bitrate(indices::Vector, audio_duration_sec::Float32, n_codes::Int)
+    n_frames = length(indices)
+    bits_per_code = ceil(Int, log2(n_codes))
+    total_bits = n_frames * bits_per_code
     bitrate_bps = total_bits / audio_duration_sec
     bitrate_kbps = bitrate_bps / 1000.0f0
     return Float32(bitrate_kbps)
 end
 
-export VectorQuantizer, compute_bitrate
+function compute_frame_bitrate(n_codes::Int, frame_duration_ms::Float32=20.0f0)
+    bits_per_code = ceil(Int, log2(n_codes))
+    frame_duration_sec = frame_duration_ms / 1000.0f0
+    bits_per_frame = bits_per_code
+    bitrate_kbps = (bits_per_frame / frame_duration_sec) / 1000.0f0
+    return Float32(bitrate_kbps)
+end
+
+function optimize_codebook_size(target_bitrate_kbps::Float32, frame_duration_ms::Float32=20.0f0)
+    frame_duration_sec = frame_duration_ms / 1000.0f0
+    bits_per_second = target_bitrate_kbps * 1000.0f0
+    bits_per_frame = bits_per_second * frame_duration_sec
+    n_codes = Int(2^ceil(bits_per_frame))
+    return clamp(n_codes, 256, 2048)
+end
+
+export VectorQuantizer, compute_bitrate, compute_frame_bitrate, optimize_codebook_size
 
 end

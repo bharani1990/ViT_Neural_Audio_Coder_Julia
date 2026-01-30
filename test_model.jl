@@ -8,37 +8,27 @@ include("src/preprocess.jl")
 include("src/quantizer.jl")
 include("src/dataloader.jl")
 include("src/model.jl")
+include("src/loss.jl")
 
 using .Data
 using .Preprocess
 using .Quantizer
 using .DataLoader
 using .Model
+using .Loss
 
 const USE_GPU = CUDA.functional()
 to_device(x) = USE_GPU ? gpu(x) : x
 
 function test_model_creation()
-    model = Model.create_model(
-        in_chans = 1,
-        out_chans = 1,
-        embed_dim = 256,
-        enc_depth = 6,
-        dec_depth = 4,
-        heads = 8,
-        mlp_dim = 1024,
-        patch_size = 16,
-        max_len = 80*1024,
-        dropout_rate = 0.1,
-        n_codes = 1024,
-    )
-    println("[Success] --> Model created")
+    model = Model.create_model()
+    println("[Success] --> Model created with defaults")
     return model
 end
 
 function test_forward_pass(model)
     model = to_device(model)
-    x = randn(Float32, 80*1024, 1, 2)
+    x = randn(Float32, 16000, 1, 2)
     x = to_device(x)
     y = model(x)
     println("[Success] --> Forward pass: $(size(x)) -> $(size(y))")
@@ -47,7 +37,7 @@ end
 
 function test_quantizer(model)
     model = to_device(model)
-    x = randn(Float32, 80*1024, 1, 1)
+    x = randn(Float32, 16000, 1, 1)
     x = to_device(x)
     _, indices = Model.encode_quantize(model, x)
     println(
@@ -58,15 +48,15 @@ end
 
 function test_gradient_computation(model)
     model = to_device(model)
-    x = randn(Float32, 80*1024, 1, 2)
+    x = randn(Float32, 16000, 1, 2)
     x = to_device(x)
 
     loss, grads = Flux.withgradient(model) do m
         y = m(x)
-        Flux.mse(y, x)
+        Loss.composite_loss(y, x)
     end
 
-    println("[Success] --> Gradients computed, loss = $loss")
+    println("[Success] --> Gradients computed with composite loss = $loss")
     return cpu(model)
 end
 
@@ -82,7 +72,7 @@ function test_save_load(model)
     BSON.@save "test_model.bson" model_cpu=model_cpu
     data = BSON.load("test_model.bson")
     loaded = data[:model_cpu]
-    x = randn(Float32, 80*1024, 1, 2)
+    x = randn(Float32, 16000, 1, 2)
     y = loaded(x)
     rm("test_model.bson")
     println("[Success] --> Save/load")

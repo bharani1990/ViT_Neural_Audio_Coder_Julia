@@ -190,6 +190,8 @@ struct AudioDecoder
     unpatch::ConvTranspose
 end
 
+Flux.@layer AudioDecoder
+
 function AudioDecoder(
     embed_dim::Int,
     depth::Int,
@@ -198,6 +200,7 @@ function AudioDecoder(
     out_chans::Int,
     patch_size::Int;
     dropout_rate = 0.1,
+    enc_depth::Int = 4,
 )
     AudioDecoder(
         [TransformerBlock(embed_dim, heads, mlp_dim; dropout_rate) for _ = 1:depth],
@@ -238,15 +241,16 @@ end
 function ViTAudioCoder(;
     in_chans = 1,
     out_chans = 1,
-    embed_dim = 256,
-    enc_depth = 6,
-    dec_depth = 4,
-    heads = 8,
-    mlp_dim = 1024,
-    patch_size = 16,
-    max_len = 16384,
+    embed_dim = 96,
+    enc_depth = 2,
+    dec_depth = 1,
+    heads = 4,
+    mlp_dim = 192,
+    patch_size = 160,
+    max_len = 16000,
     dropout_rate = 0.1,
-    n_codes = 1024,
+    n_codes = 256,
+    target_bitrate_kbps = 12.0f0,
 )
     ViTAudioCoder(
         AudioEncoder(
@@ -259,7 +263,7 @@ function ViTAudioCoder(;
             max_len;
             dropout_rate,
         ),
-        Quantizer.VectorQuantizer(n_codes, embed_dim),
+        Quantizer.VectorQuantizer(n_codes, embed_dim; target_bitrate_kbps=target_bitrate_kbps),
         AudioDecoder(
             embed_dim,
             dec_depth,
@@ -293,6 +297,13 @@ function create_model(; kwargs...)
     return model
 end
 
-export ViTAudioCoder, create_model, AudioEncoder, AudioDecoder, encode_quantize
+function compute_latency_ms(sample_rate::Int, patch_size::Int)
+    frame_samples = patch_size
+    latency_sec = Float32(frame_samples) / Float32(sample_rate)
+    latency_ms = latency_sec * 1000.0f0
+    return latency_ms
+end
+
+export ViTAudioCoder, create_model, AudioEncoder, AudioDecoder, encode_quantize, compute_latency_ms
 
 end

@@ -25,14 +25,21 @@ function load_checkpoint(checkpoint_path::String)
     end
 
     metadata = Dict{Symbol,Any}()
-    if haskey(checkpoint, :epoch)
-        metadata[:epoch] = checkpoint[:epoch]
-        println("Previous epoch: $(checkpoint[:epoch])")
-    end
-
-    if haskey(checkpoint, :loss)
-        metadata[:loss] = checkpoint[:loss]
-        println("Previous loss: $(checkpoint[:loss])")
+    
+    if haskey(checkpoint, :metadata)
+        metadata = checkpoint[:metadata]
+        for (k, v) in metadata
+            println("  $k: $v")
+        end
+    else
+        if haskey(checkpoint, :epoch)
+            metadata[:epoch] = checkpoint[:epoch]
+            println("Previous epoch: $(checkpoint[:epoch])")
+        end
+        if haskey(checkpoint, :loss)
+            metadata[:loss] = checkpoint[:loss]
+            println("Previous loss: $(checkpoint[:loss])")
+        end
     end
 
     return model, metadata
@@ -44,15 +51,19 @@ function save_checkpoint(
     epoch = nothing,
     loss = nothing,
     opt_state = nothing,
+    bitrate_kbps = nothing,
+    latency_ms = nothing,
 )
     model_cpu = cpu(model)
 
-    if !isnothing(epoch) && !isnothing(loss)
-        BSON.@save filepath model_cpu epoch loss
-    elseif !isnothing(epoch)
-        BSON.@save filepath model_cpu epoch
-    elseif !isnothing(loss)
-        BSON.@save filepath model_cpu loss
+    metadata = Dict{Symbol, Any}()
+    !isnothing(epoch) && (metadata[:epoch] = epoch)
+    !isnothing(loss) && (metadata[:loss] = loss)
+    !isnothing(bitrate_kbps) && (metadata[:bitrate_kbps] = bitrate_kbps)
+    !isnothing(latency_ms) && (metadata[:latency_ms] = latency_ms)
+    
+    if !isempty(metadata)
+        BSON.@save filepath model_cpu metadata
     else
         BSON.@save filepath model_cpu
     end

@@ -20,6 +20,22 @@ function fix_length(mel::AbstractMatrix{<:Real}; T_fixed::Int = T_FIXED)
     end
 end
 
+function fix_length_flat(mel::AbstractMatrix{<:Real}, target_length::Int)
+    mel_vec = vec(mel)
+    current_len = length(mel_vec)
+    
+    if current_len == target_length
+        return mel_vec
+    elseif current_len > target_length
+        start = div(current_len - target_length, 2) + 1
+        return mel_vec[start:(start+target_length-1)]
+    else
+        padded = zeros(Float32, target_length)
+        padded[1:current_len] .= mel_vec
+        return padded
+    end
+end
+
 function to_patches(
     mel_fixed::AbstractMatrix{<:Real};
     patch_freq::Int = PATCH_FREQ,
@@ -50,5 +66,7 @@ function to_patches(
 
     return X
 end
+
+export fix_length, fix_length_flat, to_patches
 
 end

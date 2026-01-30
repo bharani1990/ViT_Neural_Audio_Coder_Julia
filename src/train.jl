@@ -1,10 +1,9 @@
 module Train
 
 using ..Model
-using ..Dataset
 using ..DataLoader
+using ..Loss
 using Flux
-using Functors: @functor
 using JLD2
 using JSON
 using CUDA
@@ -20,28 +19,23 @@ const move_batch = GPU_AVAILABLE ? CUDA.CuArray : identity
 
 device_name() = GPU_AVAILABLE ? "GPU $(CUDA.device())" : "CPU"
 
-struct PatchDecoder
-    linear::Dense
-end
-
-@functor PatchDecoder
-
-PatchDecoder(embed_dim::Int, patch_dim::Int) = PatchDecoder(Dense(embed_dim, patch_dim))
-
-function (d::PatchDecoder)(y)
-    E, T, B = size(y)
-    y2 = reshape(y, E, T * B)
-    out = d.linear(y2)
-    out = reshape(out, size(out, 1), T, B)
-end
-
-function batch_loss(model, batch)
+function batch_loss(model, batch; sample_rate::Int=16000)
     T, P, B = size(batch)
     recon = model(batch)
-    sum((recon .- batch) .^ 2) / (T * P * B)
+    
+    loss = Loss.composite_loss(
+        recon, 
+        batch, 
+        sample_rate;
+        w_mse = 1.0f0,
+        w_spectral = 0.1f0,
+        w_correlation = 0.1f0
+    )
+    
+    return loss
 end
 
-function compute_validation_loss(model, loader)
+function compute_validation_loss(model, loader; sample_rate::Int=16000)
     total_loss = 0.0f0
     nbatches = 0
     state = 1
@@ -51,7 +45,7 @@ function compute_validation_loss(model, loader)
         batch, next_state = iter
         state = next_state
         batch = move_batch(batch)
-        total_loss += batch_loss(model, batch)
+        total_loss += batch_loss(model, batch; sample_rate=sample_rate)
         nbatches += 1
     end
     total_loss / max(nbatches, 1)
@@ -63,30 +57,14 @@ function train!(;
     lr::Float32 = 1.0f-4,
     root::AbstractString = pwd(),
     save_dir::AbstractString = "",
+    sample_rate::Int = 16000,
 )
+    target_length = 16000
 
-    ds_train = Dataset.AudioDataset(root; split = "train-clean")
-    loader_train = DataLoader.AudioDataLoader(ds_train; batch_size = batch_size)
+    loader_val = DataLoader.MelDataLoader(root, "dev-clean"; batch_size = batch_size, target_length = target_length)
 
-    ds_val = Dataset.AudioDataset(root; split = "dev-clean")
-    loader_val = DataLoader.AudioDataLoader(ds_val; batch_size = batch_size)
-
-    first_batch, _ = iterate(loader_train)
-    T, P, _ = size(first_batch)
-
-    encoder = Model.ViTEncoder(
-        P,
-        Model.EMBED_DIM,
-        Model.NUM_LAYERS,
-        Model.NUM_HEADS,
-        Model.MLP_DIM,
-        T,
-    )
-    decoder = PatchDecoder(Model.EMBED_DIM, P)
-
-    encoder = move_model(encoder)
-    decoder = move_model(decoder)
-    model = Flux.Chain(encoder, decoder)
+    model = Model.create_model()
+    model = move_model(model)
 
     opt_state = Flux.setup(Flux.Adam(lr), model)
 
@@ -94,18 +72,14 @@ function train!(;
         mkpath(save_dir)
     end
 
-    num_samples = length(ds_train)
-    total_batches = ceil(Int, num_samples / batch_size)
     best_loss = Inf
     losses_dict = Dict()
 
     println("Training on $(device_name())")
-    println(
-        "Num-Epochs = $(epochs), Num-Batch-Size = $(batch_size), Num-Batches-per-epoch = $(total_batches)",
-    )
+    println("Num-Epochs = $(epochs), Num-Batch-Size = $(batch_size)")
 
     for epoch = 1:epochs
-        loader = DataLoader.AudioDataLoader(ds_train; batch_size = batch_size)
+        loader = DataLoader.MelDataLoader(root, "train-clean"; batch_size = batch_size, target_length = target_length)
         total_loss = 0.0f0
         nbatches = 0
         state = 1
@@ -119,7 +93,7 @@ function train!(;
             batch = move_batch(batch)
 
             loss, grads = Flux.withgradient(model) do m
-                batch_loss(m, batch)
+                batch_loss(m, batch; sample_rate=sample_rate)
             end
 
             Flux.update!(opt_state, model, grads[1])
@@ -129,24 +103,16 @@ function train!(;
         end
 
         avg_loss = total_loss / max(nbatches, 1)
-        val_loss = compute_validation_loss(model, loader_val)
+        val_loss = compute_validation_loss(model, loader_val; sample_rate=sample_rate)
         losses_dict[epoch] = Dict("train" => avg_loss, "val" => val_loss)
 
-        println(
-            "epoch = $epoch, batches = $nbatches, avg loss = $(avg_loss), val loss = $(val_loss)",
-        )
+        println("epoch = $epoch, batches = $nbatches, avg loss = $(avg_loss), val loss = $(val_loss)")
 
         if save_dir != "" && avg_loss < best_loss
             best_loss = avg_loss
-            model_path = joinpath(save_dir, "best_model.jld2")
+            model_path = joinpath(save_dir, "best_model.bson")
             println("Saving best model to $model_path")
-            jldsave(
-                model_path;
-                encoder = encoder,
-                decoder = decoder,
-                epoch = epoch,
-                loss = best_loss,
-            )
+            jldsave(model_path; model = model, epoch = epoch, loss = best_loss)
         end
     end
 

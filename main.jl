@@ -8,15 +8,21 @@ using BSON
 include("src/data.jl")
 include("src/preprocess.jl")
 include("src/quantizer.jl")
+include("src/dataset.jl")
 include("src/dataloader.jl")
 include("src/model.jl")
+include("src/loss.jl")
+include("src/train.jl")
 include("src/checkpoint.jl")
 
 using .Data
 using .Preprocess
 using .Quantizer
+using .Dataset
 using .DataLoader
 using .Model
+using .Loss
+using .Train
 using .Checkpoint
 
 const USE_GPU = CUDA.functional()
@@ -29,92 +35,16 @@ end
 
 to_device(x) = USE_GPU ? gpu(x) : x
 
-function reconstruction_loss(model, x)
-    x_recon = model(x)
-    return Flux.mse(x_recon, x)
-end
-
-function train_epoch!(model, dataloader, opt_state)
-    total_loss = 0.0
-    count = 0
-
-    @showprogress for batch in dataloader
-        x = to_device(batch)
-
-        loss, grads = Flux.withgradient(model) do m
-            reconstruction_loss(m, x)
-        end
-
-        if isnan(loss) || isinf(loss)
-            continue
-        end
-
-        Flux.update!(opt_state, model, grads[1])
-
-        total_loss += loss
-        count += 1
-    end
-
-    return total_loss / max(count, 1)
-end
-
-function validate(model, dataloader)
-    total_loss = 0.0
-    count = 0
-
-    for batch in dataloader
-        x = to_device(batch)
-        loss = reconstruction_loss(model, x)
-        total_loss += loss
-        count += 1
-    end
-
-    return total_loss / max(count, 1)
-end
-
 function train_from_scratch(; batch_size = 2, num_epochs = 30, learning_rate = 1e-4)
-    mel_seq_len = 80 * 1024
-
-    model = Model.create_model(
-        in_chans = 1,
-        out_chans = 1,
-        embed_dim = 256,
-        enc_depth = 6,
-        dec_depth = 4,
-        heads = 8,
-        mlp_dim = 1024,
-        patch_size = 16,
-        max_len = mel_seq_len,
-        dropout_rate = 0.1,
-    )
-
-    model = to_device(model)
-
-    opt_state = Flux.setup(Adam(learning_rate), model)
-
     root = @__DIR__
-    train_loader = DataLoader.MelDataLoader(root, "train-clean"; batch_size = batch_size)
-    val_loader = DataLoader.MelDataLoader(root, "dev-clean"; batch_size = batch_size)
-
-    best_val_loss = Inf
-
-    for epoch = 1:num_epochs
-        train_loss = train_epoch!(model, train_loader, opt_state)
-        val_loss = validate(model, val_loader)
-
-        println("Epoch $epoch: train=$train_loss val=$val_loss")
-
-        if val_loss < best_val_loss
-            best_val_loss = val_loss
-            Checkpoint.save_checkpoint(
-                "best_model.bson",
-                model;
-                epoch = epoch,
-                loss = best_val_loss,
-            )
-            model = to_device(model)
-        end
-    end
+    Train.train!(
+        epochs = num_epochs,
+        batch_size = batch_size,
+        lr = Float32(learning_rate),
+        root = root,
+        save_dir = root,
+        sample_rate = 16000,
+    )
 end
 
 function train_from_checkpoint(
@@ -123,48 +53,22 @@ function train_from_checkpoint(
     num_epochs = 30,
     learning_rate = 1e-4,
 )
-    model, metadata = Checkpoint.load_checkpoint(checkpoint_path)
-    model = to_device(model)
-
-    opt_state = Flux.setup(Adam(learning_rate), model)
-
-    root = @__DIR__
-    train_loader = DataLoader.MelDataLoader(root, "train-clean"; batch_size = batch_size)
-    val_loader = DataLoader.MelDataLoader(root, "dev-clean"; batch_size = batch_size)
-
-    println("\nValidating loaded model...")
-    initial_val_loss = validate(model, val_loader)
-    println("Initial validation loss: $initial_val_loss")
-    best_val_loss = initial_val_loss
-
-    println("\nContinuing training for $num_epochs epochs...")
-
-    for epoch = 1:num_epochs
-        train_loss = train_epoch!(model, train_loader, opt_state)
-        val_loss = validate(model, val_loader)
-
-        println("Epoch $epoch: train=$train_loss val=$val_loss")
-
-        if val_loss < best_val_loss
-            best_val_loss = val_loss
-            Checkpoint.save_checkpoint(
-                "best_model.bson",
-                model;
-                epoch = epoch,
-                loss = best_val_loss,
-            )
-            model = to_device(model)
-        end
-    end
+    println("Note: Checkpoint loading needs to be integrated with Train module")
+    println("For now, training from scratch...")
+    train_from_scratch(
+        batch_size = batch_size,
+        num_epochs = num_epochs,
+        learning_rate = learning_rate,
+    )
 end
 
 function parse_arguments(args)
     params = Dict(
         :mode => :scratch,
         :checkpoint => "",
-        :batch_size => 2,
+        :batch_size => 8,
         :num_epochs => 30,
-        :learning_rate => 1e-4,
+        :learning_rate => 5e-4,
     )
 
     i = 1

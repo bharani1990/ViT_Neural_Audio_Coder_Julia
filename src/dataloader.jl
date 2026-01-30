@@ -8,17 +8,19 @@ struct MelDataLoader
     files::Vector{String}
     batch_size::Int
     indices::Vector{Int}
+    target_length::Int
 end
 
 function MelDataLoader(
     root::String,
     split::String;
     batch_size::Int = 4,
+    target_length::Int = 16000,
     rng = Random.GLOBAL_RNG,
 )
     files = Data.list_librispeech_flac(root; split = split)
     indices = Random.shuffle(rng, collect(1:length(files)))
-    return MelDataLoader(files, batch_size, indices)
+    return MelDataLoader(files, batch_size, indices, target_length)
 end
 
 Base.IteratorSize(::Type{MelDataLoader}) = Base.HasLength()
@@ -35,7 +37,7 @@ function Base.iterate(loader::MelDataLoader, state::Int = 1)
     for idx in batch_idx
         try
             mel = Data.load_logmel(loader.files[idx])
-            mel_fixed = Preprocess.fix_length(mel)
+            mel_fixed = Preprocess.fix_length_flat(mel, loader.target_length)
             push!(mel_list, mel_fixed)
         catch
             continue
@@ -44,12 +46,12 @@ function Base.iterate(loader::MelDataLoader, state::Int = 1)
 
     isempty(mel_list) && return Base.iterate(loader, state + loader.batch_size)
 
-    n_mels, T = size(mel_list[1])
+    T = length(mel_list[1])
     b = length(mel_list)
-    batch = Array{Float32}(undef, n_mels * T, 1, b)
+    batch = Array{Float32}(undef, T, 1, b)
 
-    for (j, mel) in enumerate(mel_list)
-        batch[:, 1, j] .= vec(mel)
+    for (j, mel_vec) in enumerate(mel_list)
+        batch[:, 1, j] .= mel_vec
     end
 
     return batch, state + loader.batch_size
